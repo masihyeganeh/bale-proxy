@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "bale.auth.v1";
+option java_outer_classname = "Auth";
+
+package bale.auth.v1;
+
+service Auth {
+  rpc StartPhoneAuth (StartPhoneAuthRequest) returns (StartPhoneAuthReply) {}
+  rpc ValidateCode (ValidateCodeRequest) returns (ValidateCodeReply) {}
+}
+
+message StartPhoneAuthRequest {
+  uint64 phoneNumber = 1;
+  int32  clientVersion = 2;
+  string apiKey = 3;
+  string userAgent = 4;
+  string userAgentString = 5;
+}
+
+message StartPhoneAuthReply {
+  string loginHash = 1;
+  int32  registered = 2;
+}
+
+message ValidateCodeRequest {
+  string loginHash = 1;
+  string loginCode = 2;
+  ValidateCodeRequestSubRequest validateCodeRequestSubRequest = 3;
+}
+
+message ValidateCodeRequestSubRequest {
+  int32 unknown = 1;
+}
+
+message ValidateCodeReply {
+  message Auth {
+    string jwt = 1;
+  }
+  Profile profile = 2;
+  Auth    auth = 4;
+}
+
+message Profile {
+  uint32 userId = 1;
+  string displayName = 3;
+}

@@ -1,0 +1,19 @@
+[package]
+name = "bale"
+version = "0.0.0"
+edition = "2018"
+publish = false
+
+[dependencies]
+tonic = { version = "0.4.3", default-features = false, features = ["codegen", "prost"] }
+grpc-web-client = { path = "../grpc-web-client" }
+prost = { version = "0.7.0", default-features = false }
+tokio = { version = "1.9.0",  features = ["full"] }
+
+[build-dependencies]
+tonic-build = { version = "0.4.2", default-features = false, features = ["prost"] }
+
+[profile.release]
+lto = true
+opt-level = 'z'
+codegen-units = 1

@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "bale",
+    "bale-proxy-client",
+    "grpc-web-client",
+    "test/test-client",
+]
