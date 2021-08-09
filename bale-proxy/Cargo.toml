@@ -1,14 +1,16 @@
 [package]
-name = "bale-proxy-client"
+name = "bale-proxy"
 version = "0.0.0"
 edition = "2018"
 publish = false
 
 [dependencies]
-tonic = { version = "0.4.3", default-features = false, features = ["codegen", "prost"] }
 bale = { path = "../bale" }
-prost = { version = "0.7.0", default-features = false }
-tokio = { version = "1.9.0",  features = ["full"] }
+async-std = { version = "1.9.0", features = ["attributes"] }
+tokio = { version = "1.9.0",  features = ["tokio-macros"] }
+lazy_static = "1.4.0"
+regex = "1.5.4"
+url = "2.2.2"
 
 [build-dependencies]
 tonic-build = { version = "0.4.2", default-features = false, features = ["prost"] }

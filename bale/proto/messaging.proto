@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "bale.messaging.v2";
+option java_outer_classname = "Messaging";
+
+package bale.messaging.v2;
+
+service Messaging {
+  rpc SendMessage (SendMessageRequest) returns (SendMessageReply) {}
+}
+
+message SendMessageRequest {
+  Peer    peer = 1;
+  uint64  rid = 2;
+  Message message = 3;
+}
+
+message SendMessageReply {
+  uint32   unknown1 = 1;
+  uint64   unknown2 = 2;
+  repeated KeyValue keyValues = 4;
+}
+
+message Peer {
+  uint32 unknown = 1;
+  uint32 userId = 2;
+}
+
+message Message {
+  TextMessage textMessage = 15;
+}
+
+message TextMessage {
+  string text = 1;
+}
+
+message KeyValue {
+  string key = 1;
+  DataType value = 2;
+}
+
+message DataType {
+  uint64 number = 4;
+}

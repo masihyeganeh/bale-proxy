@@ -71,6 +71,8 @@ impl Client {
             body = Bytes::from(base64::encode(body))
         }
 
+        eprintln!("Request Body:\n{:#?}", &body);
+
         let req = req.body(hyper::Body::from(body));
 
         eprintln!("{:#?}", &req);
@@ -86,8 +88,11 @@ impl Client {
             res = res.header(kv.0, HeaderValue::from(kv.1));
         }
 
-        let body =
-            GrpcWebCall::client_response(hyper::Body::from(response.bytes().await.unwrap()), enc);
+        let body = response.bytes().await.unwrap();
+
+        eprintln!("Response Body:\n{:#?}", &body);
+
+        let body = GrpcWebCall::client_response(hyper::Body::from(body), enc);
 
         Ok(res.body(BoxBody::new(body)).unwrap())
     }

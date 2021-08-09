@@ -2,7 +2,7 @@
 
 members = [
     "bale",
-    "bale-proxy-client",
+    "bale-proxy",
     "grpc-web-client",
     "test/test-client",
 ]
