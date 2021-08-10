@@ -59,6 +59,12 @@ async fn main() {
     //     .await;
     bale.send_message(932014429, "Hi".to_string()).await;
 
+    if let OperationMode::Client(server_user_id) = run_params.mode {
+        // TODO: Handshake
+        bale.send_message(server_user_id, "Handshaking".to_string())
+            .await;
+    }
+
     bale.subscribe_to_updates().await;
 }
 
@@ -100,6 +106,12 @@ struct RunParams {
     local_ip: Option<&'static str>,
     local_port: Option<&'static str>,
     opts: Option<&'static str>,
+    mode: OperationMode,
+}
+
+enum OperationMode {
+    Server,
+    Client(u32),
 }
 
 async fn get_run_params() -> RunParams {
@@ -108,6 +120,9 @@ async fn get_run_params() -> RunParams {
     let local_ip: Option<&'static str> = option_env!("SS_LOCAL_HOST");
     let local_port: Option<&'static str> = option_env!("SS_LOCAL_PORT");
     let opts: Option<&'static str> = option_env!("SS_PLUGIN_OPTIONS");
+    let mode: OperationMode = OperationMode::Server;
+
+    // TODO: Figure out operation mode from shadowsocks env
 
     let mut phone_number: Option<u64> = None;
     let mut jwt: Option<&'static str> = None;
@@ -151,5 +166,6 @@ async fn get_run_params() -> RunParams {
         local_ip,
         local_port,
         opts,
+        mode,
     }
 }
