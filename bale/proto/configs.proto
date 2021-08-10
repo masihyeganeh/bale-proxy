@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "bale.v1";
+option java_outer_classname = "Messaging";
+
+package bale.v1;
+
+service Configs {
+  rpc GetParameters (GetParametersRequest) returns (stream GetParametersReply) {}
+}
+
+message GetParametersRequest {
+}
+
+message GetParametersReply {
+  repeated Config configs = 1;
+}
+
+message Config {
+  string key = 1;
+  string value = 2;
+}

@@ -149,4 +149,3 @@ unsafe impl Send for ReadableStreamBody {}
 
 unsafe impl Sync for ClientError {}
 unsafe impl Send for ClientError {}
-

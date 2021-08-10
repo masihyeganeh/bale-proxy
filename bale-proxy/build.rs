@@ -3,6 +3,7 @@ fn main() {
         .build_server(false)
         .compile(
             &[
+                "../bale/proto/configs.proto",
                 "../bale/proto/auth.proto",
                 "../bale/proto/messaging.proto",
                 "../bale/proto/maviz.proto",

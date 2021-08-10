@@ -1,4 +1,4 @@
-use bale::BaleClient;
+use bale::{BaleClient, LoginStatus};
 use std::io::{stdin, stdout, Write};
 
 mod error;
@@ -13,19 +13,37 @@ async fn main() {
 
     let phone_number = run_params.phone_number.expect("bad phone number");
 
-    let mut bale = BaleClient::new();
-    let registered = bale.login(phone_number).await;
+    let mut bale = BaleClient::new(phone_number);
 
-    if !registered {
-        panic!("phone number is not registered")
+    let login_status = if let Some(jwt) = run_params.jwt {
+        let mut res = bale.login_with(jwt.to_string()).await;
+        if matches!(res, LoginStatus::Expired) {
+            res = bale.login().await;
+        }
+        res
+    } else {
+        bale.login().await
+    };
+
+    match login_status {
+        LoginStatus::LoggedIn(_) => {
+            // Successful login
+        }
+        LoginStatus::WaitingForValidationCode(_) => {
+            let login_code = get_input(
+                format!("Please enter login code sent by sms to {}:", phone_number),
+                !run_params.running_from_shadowsocks,
+            )
+            .await;
+            if bale.validate_code(&login_code).await.is_none() {
+                panic!("wrong validation code")
+            }
+            // Successful login
+        }
+        LoginStatus::NotRegistered => panic!("phone number is not registered"),
+        LoginStatus::Error(err) => panic!("{}", err),
+        _ => panic!("unknown error happened"),
     }
-
-    let login_code = get_input(
-        format!("Please enter login code sent by sms to {}:", phone_number),
-        !run_params.running_from_shadowsocks,
-    )
-    .await;
-    bale.validate_code(&login_code).await;
 
     // let recipient_user_id = get_input(
     //     "Please enter recipient user id:",
@@ -76,6 +94,7 @@ fn get_input_from_terminal(message: String) -> String {
 struct RunParams {
     running_from_shadowsocks: bool,
     phone_number: Option<u64>,
+    jwt: Option<&'static str>,
     remote_host: Option<&'static str>,
     remote_port: Option<&'static str>,
     local_ip: Option<&'static str>,
@@ -91,12 +110,16 @@ async fn get_run_params() -> RunParams {
     let opts: Option<&'static str> = option_env!("SS_PLUGIN_OPTIONS");
 
     let mut phone_number: Option<u64> = None;
+    let mut jwt: Option<&'static str> = None;
     opts.map(|opts| {
         opts.split(';')
             .map(|opt| opt.trim())
             .filter(|opt| {
                 if opt.to_lowercase().starts_with("phone_number=") {
                     phone_number = opt["phone_number=".len()..].parse().ok();
+                    return false;
+                } else if opt.to_lowercase().starts_with("jwt=") {
+                    jwt = Some(&opt["jwt=".len()..]);
                     return false;
                 }
                 true
@@ -122,6 +145,7 @@ async fn get_run_params() -> RunParams {
     RunParams {
         running_from_shadowsocks,
         phone_number,
+        jwt,
         remote_host,
         remote_port,
         local_ip,

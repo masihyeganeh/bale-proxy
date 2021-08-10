@@ -14,4 +14,40 @@ message SubscribeToUpdatesRequest {
 }
 
 message SubscribeToUpdatesReply {
+  Request request = 1;
+  uint64 sendTimestamp = 2;
+  uint64 unknown3 = 3;
+  uint64 receiveTimestamp = 4;
 }
+
+message Request {
+  ReceiveMessageRequest receiveMessage = 55;
+}
+
+message ReceiveMessageRequest {
+  MavizPeer    peer = 1;
+  uint32       senderId = 2;
+  uint64       timestamp = 3;
+  uint64       rid = 4;
+  MavizMessage message = 5;
+  Unknown9     unknown9 = 9;
+}
+
+message Unknown9 {
+  uint64 timestamp = 1;
+  uint64 unknown2 = 2;
+}
+
+message MavizPeer {
+  uint32 unknown = 1;
+  uint32 userId = 2;
+}
+
+message MavizMessage {
+  MavizTextMessage textMessage = 15;
+}
+
+message MavizTextMessage {
+  string text = 1;
+}
+
