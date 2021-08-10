@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // This file is based on https://github.com/alce/tonic/blob/86bbb1d5a4844882dec81bef7c1a554bd9464adf/tonic-web/tonic-web/src/call.rs
 
 use std::mem;

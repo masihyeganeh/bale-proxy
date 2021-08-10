@@ -66,7 +66,7 @@ impl BaleClient {
 
     pub async fn login_with(&mut self, jwt: String) -> LoginStatus {
         self.login_status = LoginStatus::LoggedIn(jwt);
-        if let Some(configs) = self.fetch_configs().await {
+        if let Some(_configs) = self.fetch_configs().await {
             //
         } else {
             self.login_status = LoginStatus::Expired;

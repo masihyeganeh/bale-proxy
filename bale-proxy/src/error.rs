@@ -3,7 +3,6 @@ use std::fmt::{self, Display, Formatter};
 #[derive(Debug)]
 pub enum Error {
     InternalError(String),
-    NotAuthenticatedYetError,
     ServerError(String),
     ChannelRecvErr(async_std::channel::RecvError),
     ParseError(url::ParseError),
@@ -19,7 +18,6 @@ impl Display for Error {
             Error::InternalError(ref e) => e.fmt(f),
             Error::ServerError(ref e) => e.fmt(f),
             Error::ChannelRecvErr(ref e) => e.fmt(f),
-            Error::NotAuthenticatedYetError => f.write_str("you should authenticate first"),
             Error::ParseError(ref e) => e.fmt(f),
             Error::ParseIntError(ref e) => e.fmt(f),
             Error::ParseUtf8Error(ref e) => e.fmt(f),
@@ -35,7 +33,6 @@ impl std::error::Error for Error {
             Error::InternalError(ref _e) => None,
             Error::ServerError(ref _e) => None,
             Error::ChannelRecvErr(ref _e) => None,
-            Error::NotAuthenticatedYetError => None,
             Error::ParseError(ref e) => Some(e),
             Error::ParseIntError(ref e) => Some(e),
             Error::ParseUtf8Error(ref e) => Some(e),
