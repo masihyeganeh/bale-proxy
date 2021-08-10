@@ -15,7 +15,7 @@ pub struct BaleClient {
 enum LoginStatus {
     WaitingForNumber,
     WaitingForValidationCode(String),
-    LoggedIn(String, Profile),
+    LoggedIn(String),
 }
 
 impl BaleClient {
@@ -26,6 +26,16 @@ impl BaleClient {
                 Encoding::Base64,
             ),
             login_status: WaitingForNumber,
+        }
+    }
+
+    pub fn new_with_jwt(jwt: String) -> Self {
+        BaleClient {
+            client: Client::new_with_encoding(
+                "https://next-api.bale.ai".to_string(),
+                Encoding::Base64,
+            ),
+            login_status: LoggedIn(jwt),
         }
     }
 
@@ -51,13 +61,13 @@ impl BaleClient {
         response.registered == 1
     }
 
-    pub async fn validate_code(&mut self, login_code: &str) {
+    pub async fn validate_code(&mut self, login_code: &str) -> Option<Profile> {
         let mut client = auth_client::AuthClient::new(self.client.clone());
 
         let login_hash = if let WaitingForValidationCode(login_hash) = &self.login_status {
             login_hash
         } else {
-            return;
+            return None;
         };
 
         let request = tonic::Request::new(ValidateCodeRequest {
@@ -73,18 +83,17 @@ impl BaleClient {
             }
         };
 
-        self.login_status = LoggedIn(
-            response.auth.clone().unwrap().jwt,
-            response.profile.clone().unwrap(),
-        );
-        eprintln!("{:#?}", response)
+        self.login_status = LoggedIn(response.auth.clone().unwrap().jwt);
+        eprintln!("{:#?}", response);
+
+        Some(response.profile.clone().unwrap())
     }
 
     pub async fn send_message(&self, user_id: u32, message: String) {
         let mut client = messaging_client::MessagingClient::new(self.client.clone());
 
-        let (jwt, profile) = if let LoggedIn(jwt, profile) = &self.login_status {
-            (jwt, profile)
+        let jwt = if let LoggedIn(jwt) = &self.login_status {
+            jwt
         } else {
             return;
         };
@@ -117,8 +126,8 @@ impl BaleClient {
     pub async fn subscribe_to_updates(&self) {
         let mut client = maviz_stream_client::MavizStreamClient::new(self.client.clone());
 
-        let (jwt, profile) = if let LoggedIn(jwt, profile) = &self.login_status {
-            (jwt, profile)
+        let jwt = if let LoggedIn(jwt) = &self.login_status {
+            jwt
         } else {
             return;
         };
@@ -141,3 +150,4 @@ impl BaleClient {
         }
     }
 }
+

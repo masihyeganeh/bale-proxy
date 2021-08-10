@@ -4,12 +4,11 @@ use crate::call::Encoding::Base64;
 use bytes::Bytes;
 pub use call::Encoding;
 use call::GrpcWebCall;
-use core::{
-    fmt,
-    task::{Context, Poll},
-};
-use futures::Future;
-use http::{request::Request, response::Response, HeaderValue};
+use core::fmt;
+use core::task::{Context, Poll};
+use futures::{Future, Stream};
+use http::{request::Request, response::Response, HeaderMap, HeaderValue};
+use http_body::Body;
 use std::{error::Error, pin::Pin};
 use tonic::{body::BoxBody, client::GrpcService};
 
@@ -50,7 +49,7 @@ impl Client {
 
         let mut req = reqwest::Client::new()
             .post(uri)
-            .version(reqwest::Version::HTTP_11);
+            .version(reqwest::Version::HTTP_11); // TODO: Shouldn't this be HTTP_2 at least?
 
         for (k, v) in rpc.headers().iter() {
             if k.as_str() == "content-type" {
@@ -88,11 +87,7 @@ impl Client {
             res = res.header(kv.0, HeaderValue::from(kv.1));
         }
 
-        let body = response.bytes().await.unwrap();
-
-        eprintln!("Response Body:\n{:#?}", &body);
-
-        let body = GrpcWebCall::client_response(hyper::Body::from(body), enc);
+        let body = GrpcWebCall::client_response(ReadableStreamBody::new(response), enc);
 
         Ok(res.body(BoxBody::new(body)).unwrap())
     }
@@ -111,3 +106,47 @@ impl GrpcService<BoxBody> for Client {
         Box::pin(self.clone().request(rpc))
     }
 }
+
+struct ReadableStreamBody {
+    stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>>>>,
+}
+
+impl ReadableStreamBody {
+    fn new(inner: reqwest::Response) -> Self {
+        ReadableStreamBody {
+            stream: Box::pin(inner.bytes_stream()),
+        }
+    }
+}
+
+impl Body for ReadableStreamBody {
+    type Data = Bytes;
+    type Error = reqwest::Error;
+
+    fn poll_data(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        self.stream.as_mut().poll_next(cx)
+    }
+
+    fn poll_trailers(
+        self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
+        Poll::Ready(Ok(None))
+    }
+
+    fn is_end_stream(&self) -> bool {
+        false
+    }
+}
+
+// WARNING: these are required to satisfy the Body and Error traits, make sure about thread-safety.
+
+unsafe impl Sync for ReadableStreamBody {}
+unsafe impl Send for ReadableStreamBody {}
+
+unsafe impl Sync for ClientError {}
+unsafe impl Send for ClientError {}
+
