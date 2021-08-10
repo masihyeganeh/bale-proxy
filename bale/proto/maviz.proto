@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "bale.maviz.v1";
+option java_outer_classname = "MavizStream";
+
+package bale.maviz.v1;
+
+service MavizStream {
+  rpc SubscribeToUpdates (SubscribeToUpdatesRequest) returns (stream SubscribeToUpdatesReply) {}
+}
+
+message SubscribeToUpdatesRequest {
+}
+
+message SubscribeToUpdatesReply {
+}

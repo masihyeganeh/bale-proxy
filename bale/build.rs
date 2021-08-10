@@ -1,6 +1,13 @@
 fn main() {
     tonic_build::configure()
         .build_server(false)
-        .compile(&["proto/auth.proto", "proto/messaging.proto"], &["proto"])
+        .compile(
+            &[
+                "proto/auth.proto",
+                "proto/messaging.proto",
+                "proto/maviz.proto",
+            ],
+            &["proto"],
+        )
         .unwrap();
 }

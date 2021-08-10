@@ -5,6 +5,7 @@ fn main() {
             &[
                 "../../bale/proto/auth.proto",
                 "../../bale/proto/messaging.proto",
+                "../../bale/proto/maviz.proto",
             ],
             &["../../bale/proto"],
         )

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 const TEMPLATE: &'static str = include_str!("../template/input.html");
 
-pub async fn get_from_web(message: &'static str) -> Result<String, Error> {
+pub async fn get_from_web(message: String) -> Result<String, Error> {
     // Open up a TCP connection and create a URL.
     let listener = TcpListener::bind(("127.0.0.1", 8087)).await?;
     let addr = format!("http://{}", listener.local_addr()?);
@@ -25,8 +25,9 @@ pub async fn get_from_web(message: &'static str) -> Result<String, Error> {
         while let Some(stream) = incoming.next().await {
             let stream = stream.unwrap();
             let tx = sender.clone();
+            let msg = message.clone();
             task::spawn(async move {
-                match accept(stream, message).await {
+                match accept(stream, msg).await {
                     Ok(res) => {
                         let _ = tx.send(res).await;
                         return;
@@ -43,7 +44,7 @@ pub async fn get_from_web(message: &'static str) -> Result<String, Error> {
 }
 
 // Take a TCP stream, and convert it into sequential HTTP request / response pairs.
-async fn accept(mut stream: TcpStream, title: &'static str) -> Result<String, Error> {
+async fn accept(mut stream: TcpStream, title: String) -> Result<String, Error> {
     let mut result: Option<String> = None;
     let mut message = "";
 
@@ -77,7 +78,7 @@ async fn accept(mut stream: TcpStream, title: &'static str) -> Result<String, Er
             .write(
                 TEMPLATE
                     .replace("{{message}}", message)
-                    .replace("{{title}}", title)
+                    .replace("{{title}}", title.as_ref())
                     .as_ref(),
             )
             .await?;

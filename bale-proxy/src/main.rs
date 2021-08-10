@@ -21,7 +21,7 @@ async fn main() {
     }
 
     let login_code = get_input(
-        "Please enter login code sent by sms:",
+        format!("Please enter login code sent by sms to {}:", phone_number),
         !run_params.running_from_shadowsocks,
     )
     .await;
@@ -40,9 +40,11 @@ async fn main() {
     // bale.send_message(recipient_user_id.parse().unwrap(), message)
     //     .await;
     bale.send_message(932014429, "Hi".to_string()).await;
+
+    bale.subscribe_to_updates().await;
 }
 
-async fn get_input(message: &'static str, has_terminal_access: bool) -> String {
+async fn get_input(message: String, has_terminal_access: bool) -> String {
     if has_terminal_access {
         get_input_from_terminal(message)
     } else {
@@ -50,11 +52,11 @@ async fn get_input(message: &'static str, has_terminal_access: bool) -> String {
     }
 }
 
-async fn get_input_from_http(message: &'static str) -> String {
+async fn get_input_from_http(message: String) -> String {
     get_from_web(message).await.unwrap()
 }
 
-fn get_input_from_terminal(message: &str) -> String {
+fn get_input_from_terminal(message: String) -> String {
     let mut user_input = String::new();
     print!("{} ", message);
     let _ = stdout().flush();
@@ -110,7 +112,7 @@ async fn get_run_params() -> RunParams {
 
     if phone_number == None {
         let phone_number_str = get_input(
-            "Please enter mobile number (can be from receive-smss.com):",
+            "Please enter mobile number (can be from receive-smss.com):".to_string(),
             !running_from_shadowsocks,
         )
         .await;

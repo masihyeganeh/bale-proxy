@@ -1,5 +1,6 @@
 tonic::include_proto!("bale.auth.v1");
 tonic::include_proto!("bale.messaging.v2");
+tonic::include_proto!("bale.maviz.v1");
 
 use crate::LoginStatus::{LoggedIn, WaitingForNumber, WaitingForValidationCode};
 use grpc_web_client::{Client, Encoding};
@@ -39,7 +40,13 @@ impl BaleClient {
             user_agent_string: "Firefox, macOS".to_string(),
         });
 
-        let response = client.start_phone_auth(request).await.unwrap().into_inner();
+        let response = match client.start_phone_auth(request).await {
+            Ok(response) => response.into_inner(),
+            Err(status) => {
+                panic!("{} : {}", status.code(), status.message())
+            }
+        };
+
         self.login_status = WaitingForValidationCode(response.login_hash);
         response.registered == 1
     }
@@ -59,7 +66,13 @@ impl BaleClient {
             validate_code_request_sub_request: Some(ValidateCodeRequestSubRequest { unknown: 1 }),
         });
 
-        let response = client.validate_code(request).await.unwrap().into_inner();
+        let response = match client.validate_code(request).await {
+            Ok(response) => response.into_inner(),
+            Err(status) => {
+                panic!("{} : {}", status.code(), status.message())
+            }
+        };
+
         self.login_status = LoggedIn(
             response.auth.clone().unwrap().jwt,
             response.profile.clone().unwrap(),
@@ -91,7 +104,40 @@ impl BaleClient {
             .metadata_mut()
             .insert("auth-jwt", jwt.parse().unwrap());
 
-        let response = client.send_message(request).await.unwrap().into_inner();
+        let response = match client.send_message(request).await {
+            Ok(response) => response.into_inner(),
+            Err(status) => {
+                panic!("{} : {}", status.code(), status.message())
+            }
+        };
+
         eprintln!("{:#?}", response)
+    }
+
+    pub async fn subscribe_to_updates(&self) {
+        let mut client = maviz_stream_client::MavizStreamClient::new(self.client.clone());
+
+        let (jwt, profile) = if let LoggedIn(jwt, profile) = &self.login_status {
+            (jwt, profile)
+        } else {
+            return;
+        };
+
+        let mut request = tonic::Request::new(SubscribeToUpdatesRequest {});
+
+        request
+            .metadata_mut()
+            .insert("auth-jwt", jwt.parse().unwrap());
+
+        let mut response = match client.subscribe_to_updates(request).await {
+            Ok(response) => response.into_inner(),
+            Err(status) => {
+                panic!("{} : {}", status.code(), status.message())
+            }
+        };
+
+        while let message = response.message().await {
+            eprintln!("{:#?}", message)
+        }
     }
 }
