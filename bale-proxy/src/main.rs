@@ -9,6 +9,7 @@ use socket::Socket;
 mod error;
 mod simple_server;
 use simple_server::get_from_web;
+use std::str::FromStr;
 
 async fn temporary_echo_function(input_bytes: Vec<u8>) -> Vec<u8> {
     trace!("{:?}", input_bytes);
@@ -18,6 +19,7 @@ async fn temporary_echo_function(input_bytes: Vec<u8>) -> Vec<u8> {
 #[tokio::main]
 async fn main() {
     let run_params = get_run_params().await;
+    log::set_max_level(run_params.log_level);
 
     eprintln!("Run params : {:#?}", run_params);
 
@@ -125,6 +127,7 @@ struct RunParams {
     local_port: Option<String>,
     opts: Option<String>,
     mode: OperationMode,
+    log_level: log::LevelFilter,
 }
 
 #[derive(Debug)]
@@ -140,6 +143,7 @@ async fn get_run_params() -> RunParams {
     let local_port: Option<String> = env::var("SS_LOCAL_PORT").ok();
     let mut opts: Option<String> = env::var("SS_PLUGIN_OPTIONS").ok();
     let mut mode: OperationMode = OperationMode::Server;
+    let mut log_level: log::LevelFilter = log::LevelFilter::Info;
 
     let mut phone_number: Option<u64> = None;
     let mut jwt: Option<String> = None;
@@ -158,6 +162,10 @@ async fn get_run_params() -> RunParams {
                     return false;
                 } else if opt.to_lowercase() == "server" {
                     mode = OperationMode::Server;
+                    return false;
+                } else if opt.to_lowercase().starts_with("log_level=") {
+                    log_level = log::LevelFilter::from_str(&opt["log_level=".len()..])
+                        .unwrap_or(log::LevelFilter::Info);
                     return false;
                 }
                 true
@@ -190,5 +198,6 @@ async fn get_run_params() -> RunParams {
         local_port,
         opts,
         mode,
+        log_level,
     }
 }
