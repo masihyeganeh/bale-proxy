@@ -1,9 +1,19 @@
+use async_std::net::SocketAddrV4;
 use bale::{BaleClient, LoginStatus};
+use std::env;
 use std::io::{stdin, stdout, Write};
+mod socket;
+use log::trace;
+use socket::Socket;
 
 mod error;
 mod simple_server;
 use simple_server::get_from_web;
+
+async fn temporary_echo_function(input_bytes: Vec<u8>) -> Vec<u8> {
+    trace!("{:?}", input_bytes);
+    input_bytes
+}
 
 #[tokio::main]
 async fn main() {
@@ -25,9 +35,10 @@ async fn main() {
         bale.login().await
     };
 
-    match login_status {
-        LoginStatus::LoggedIn(_) => {
+    let user_id = match login_status {
+        LoginStatus::LoggedIn(_jwt, user_id) => {
             // Successful login
+            user_id
         }
         LoginStatus::WaitingForValidationCode(_) => {
             let login_code = get_input(
@@ -35,35 +46,42 @@ async fn main() {
                 !run_params.running_from_shadowsocks,
             )
             .await;
-            if bale.validate_code(&login_code).await.is_none() {
+            if let Some(user_data) = bale.validate_code(&login_code).await {
+                // Successful login
+                user_data.user_id
+            } else {
                 panic!("wrong validation code")
             }
-            // Successful login
         }
         LoginStatus::NotRegistered => panic!("phone number is not registered"),
         LoginStatus::Error(err) => panic!("{}", err),
         _ => panic!("unknown error happened"),
-    }
-
-    // let recipient_user_id = get_input(
-    //     "Please enter recipient user id:",
-    //     !run_params.running_from_shadowsocks,
-    // )
-    // .await;
-    // let message = get_input(
-    //     "Please enter your message:",
-    //     !run_params.running_from_shadowsocks,
-    // )
-    // .await;
-    // bale.send_message(recipient_user_id.parse().unwrap(), message)
-    //     .await;
-    bale.send_message(932014429, "Hi".to_string()).await;
+    };
 
     if let OperationMode::Client(server_user_id) = run_params.mode {
         // TODO: Handshake
         bale.send_message(server_user_id, "Handshaking".to_string())
             .await;
+    } else {
+        eprintln!("Set {} as server id in clients", user_id);
     }
+
+    Socket::new(temporary_echo_function)
+        .connect(
+            run_params.mode,
+            SocketAddrV4::new(
+                run_params.local_host.unwrap().parse().unwrap(),
+                run_params.local_port.unwrap().parse().unwrap(),
+            ),
+            SocketAddrV4::new(
+                run_params.remote_host.unwrap().parse().unwrap(),
+                run_params.remote_port.unwrap().parse().unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    bale.send_message(932014429, "Hi".to_string()).await;
 
     bale.subscribe_to_updates().await;
 }
@@ -100,33 +118,32 @@ fn get_input_from_terminal(message: String) -> String {
 struct RunParams {
     running_from_shadowsocks: bool,
     phone_number: Option<u64>,
-    jwt: Option<&'static str>,
-    remote_host: Option<&'static str>,
-    remote_port: Option<&'static str>,
-    local_ip: Option<&'static str>,
-    local_port: Option<&'static str>,
-    opts: Option<&'static str>,
+    jwt: Option<String>,
+    remote_host: Option<String>,
+    remote_port: Option<String>,
+    local_host: Option<String>,
+    local_port: Option<String>,
+    opts: Option<String>,
     mode: OperationMode,
 }
 
-enum OperationMode {
+#[derive(Debug)]
+pub(crate) enum OperationMode {
     Server,
     Client(u32),
 }
 
 async fn get_run_params() -> RunParams {
-    let remote_host: Option<&'static str> = option_env!("SS_REMOTE_HOST");
-    let remote_port: Option<&'static str> = option_env!("SS_REMOTE_PORT");
-    let local_ip: Option<&'static str> = option_env!("SS_LOCAL_HOST");
-    let local_port: Option<&'static str> = option_env!("SS_LOCAL_PORT");
-    let opts: Option<&'static str> = option_env!("SS_PLUGIN_OPTIONS");
-    let mode: OperationMode = OperationMode::Server;
-
-    // TODO: Figure out operation mode from shadowsocks env
+    let remote_host: Option<String> = env::var("SS_REMOTE_HOST").ok();
+    let remote_port: Option<String> = env::var("SS_REMOTE_PORT").ok();
+    let local_host: Option<String> = env::var("SS_LOCAL_HOST").ok();
+    let local_port: Option<String> = env::var("SS_LOCAL_PORT").ok();
+    let mut opts: Option<String> = env::var("SS_PLUGIN_OPTIONS").ok();
+    let mut mode: OperationMode = OperationMode::Server;
 
     let mut phone_number: Option<u64> = None;
-    let mut jwt: Option<&'static str> = None;
-    opts.map(|opts| {
+    let mut jwt: Option<String> = None;
+    opts = opts.map(|opts| {
         opts.split(';')
             .map(|opt| opt.trim())
             .filter(|opt| {
@@ -134,7 +151,13 @@ async fn get_run_params() -> RunParams {
                     phone_number = opt["phone_number=".len()..].parse().ok();
                     return false;
                 } else if opt.to_lowercase().starts_with("jwt=") {
-                    jwt = Some(&opt["jwt=".len()..]);
+                    jwt = Some((&opt["jwt=".len()..]).to_string());
+                    return false;
+                } else if opt.to_lowercase().starts_with("client=") {
+                    mode = OperationMode::Client(opt["client=".len()..].parse().unwrap());
+                    return false;
+                } else if opt.to_lowercase() == "server" {
+                    mode = OperationMode::Server;
                     return false;
                 }
                 true
@@ -144,7 +167,7 @@ async fn get_run_params() -> RunParams {
     });
 
     let running_from_shadowsocks = matches!(
-        (remote_host, remote_port, local_ip, local_port),
+        (&remote_host, &remote_port, &local_host, &local_port),
         (Some(_), Some(_), Some(_), Some(_))
     );
 
@@ -163,7 +186,7 @@ async fn get_run_params() -> RunParams {
         jwt,
         remote_host,
         remote_port,
-        local_ip,
+        local_host,
         local_port,
         opts,
         mode,

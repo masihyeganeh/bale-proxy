@@ -4,6 +4,7 @@ tonic::include_proto!("bale.messaging.v2");
 tonic::include_proto!("bale.maviz.v1");
 
 use grpc_web_client::{Client, Encoding};
+use serde::Deserialize;
 use std::collections::HashMap;
 
 const API_KEY: &str = "C28D46DC4C3A7A26564BFCC48B929086A95C93C98E789A19847BEE8627DE4E7D";
@@ -18,7 +19,7 @@ pub struct BaleClient {
 pub enum LoginStatus {
     WaitingForNumber,
     WaitingForValidationCode(String),
-    LoggedIn(String),
+    LoggedIn(String, u32),
     NotRegistered,
     Expired,
     Error(String),
@@ -65,9 +66,10 @@ impl BaleClient {
     }
 
     pub async fn login_with(&mut self, jwt: String) -> LoginStatus {
-        self.login_status = LoginStatus::LoggedIn(jwt);
+        self.login_status = LoginStatus::LoggedIn(jwt.clone(), 0);
         if let Some(_configs) = self.fetch_configs().await {
-            //
+            let user_data = get_user_data_from_jwt(jwt.clone());
+            self.login_status = LoginStatus::LoggedIn(jwt, user_data.user_id);
         } else {
             self.login_status = LoginStatus::Expired;
         }
@@ -79,7 +81,7 @@ impl BaleClient {
 
         let mut request = tonic::Request::new(GetParametersRequest {});
 
-        let jwt = if let LoginStatus::LoggedIn(jwt) = &self.login_status {
+        let jwt = if let LoginStatus::LoggedIn(jwt, _user_id) = &self.login_status {
             jwt
         } else {
             return None;
@@ -112,7 +114,7 @@ impl BaleClient {
         }
     }
 
-    pub async fn validate_code(&mut self, login_code: &str) -> Option<Profile> {
+    pub async fn validate_code(&mut self, login_code: &str) -> Option<UserData> {
         let mut client = auth_client::AuthClient::new(self.client.clone());
 
         let login_hash =
@@ -135,16 +137,25 @@ impl BaleClient {
             }
         };
 
-        self.login_status = LoginStatus::LoggedIn(response.auth.clone().unwrap().jwt);
-        eprintln!("{:#?}", response);
+        self.login_status = LoginStatus::LoggedIn(
+            response.auth.clone().unwrap().jwt,
+            response.profile.as_ref().unwrap().user_id,
+        );
+        eprintln!("{:#?}", &response);
 
-        Some(response.profile.clone().unwrap())
+        Some(UserData {
+            app_id: 4,
+            auth_id: "".to_string(), // FIXME
+            auth_sid: 0,             // FIXME
+            service: "web_lite".to_string(),
+            user_id: response.profile.clone().unwrap().user_id,
+        })
     }
 
     pub async fn send_message(&self, user_id: u32, message: String) {
         let mut client = messaging_client::MessagingClient::new(self.client.clone());
 
-        let jwt = if let LoginStatus::LoggedIn(jwt) = &self.login_status {
+        let jwt = if let LoginStatus::LoggedIn(jwt, _user_id) = &self.login_status {
             jwt
         } else {
             return;
@@ -178,7 +189,7 @@ impl BaleClient {
     pub async fn subscribe_to_updates(&self) {
         let mut client = maviz_stream_client::MavizStreamClient::new(self.client.clone());
 
-        let jwt = if let LoginStatus::LoggedIn(jwt) = &self.login_status {
+        let jwt = if let LoginStatus::LoggedIn(jwt, _user_id) = &self.login_status {
             jwt
         } else {
             return;
@@ -201,4 +212,33 @@ impl BaleClient {
             eprintln!("{:#?}", message)
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct Jwt {
+    exp: i64,
+    iat: i64,
+    iss: String,
+    payload: UserData,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserData {
+    #[serde(rename = "app_id")]
+    pub app_id: i32,
+    #[serde(rename = "auth_id")]
+    pub auth_id: String,
+    #[serde(rename = "auth_sid")]
+    pub auth_sid: u32,
+    #[serde(rename = "service")]
+    pub service: String,
+    #[serde(rename = "user_id")]
+    pub user_id: u32,
+}
+
+fn get_user_data_from_jwt(jtw: String) -> UserData {
+    let jwt_payload = jtw.split(".").collect::<Vec<&str>>()[1].clone();
+    let jwt_payload_data = base64::decode(jwt_payload).unwrap();
+    let jwt: Jwt = serde_json::from_slice(jwt_payload_data.as_slice()).unwrap();
+    jwt.payload
 }

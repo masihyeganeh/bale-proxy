@@ -7,10 +7,12 @@ publish = false
 [dependencies]
 bale = { path = "../bale" }
 async-std = { version = "1.9.0", features = ["attributes"] }
-tokio = { version = "1.9.0",  features = ["tokio-macros"] }
+tokio = { version = "1.9.0", features = ["tokio-macros"] }
 lazy_static = "1.4.0"
+futures = "0.3.16"
 regex = "1.5.4"
 url = "2.2.2"
+log = "0.4.14"
 
 [build-dependencies]
 tonic-build = { version = "0.4.2", default-features = false, features = ["prost"] }

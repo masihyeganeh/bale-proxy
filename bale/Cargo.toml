@@ -9,6 +9,9 @@ tonic = { version = "0.4.3", default-features = false, features = ["codegen", "p
 grpc-web-client = { path = "../grpc-web-client" }
 prost = { version = "0.7.0", default-features = false }
 tokio = { version = "1.9.0",  features = ["full"] }
+serde = { version = "1.0.127", features = ["derive"] }
+serde_json = "1.0.66"
+base64 = "0.13.0"
 rand = "0.8.4"
 
 [build-dependencies]
