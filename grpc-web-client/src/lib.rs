@@ -11,6 +11,7 @@ use http::{request::Request, response::Response, HeaderMap, HeaderValue};
 use http_body::Body;
 use std::{error::Error, pin::Pin};
 use tonic::{body::BoxBody, client::GrpcService};
+use tracing::trace;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientError {
@@ -70,15 +71,15 @@ impl Client {
             body = Bytes::from(base64::encode(body))
         }
 
-        eprintln!("Request Body:\n{:#?}", &body);
+        trace!("Request Body:\n{:#?}", &body);
 
         let req = req.body(hyper::Body::from(body));
 
-        eprintln!("{:#?}", &req);
+        trace!("{:#?}", &req);
 
         let response = req.send().await.unwrap();
 
-        eprintln!("{:#?}", &response);
+        trace!("{:#?}", &response);
 
         let mut res = Response::builder().status(response.status());
         let enc = Encoding::from_content_type(response.headers());
@@ -96,7 +97,8 @@ impl Client {
 impl GrpcService<BoxBody> for Client {
     type ResponseBody = BoxBody;
     type Error = ClientError;
-    type Future = Pin<Box<dyn Future<Output = Result<Response<BoxBody>, ClientError>>>>;
+    type Future =
+        Pin<Box<(dyn Future<Output = Result<Response<BoxBody>, ClientError>> + Send + 'static)>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))

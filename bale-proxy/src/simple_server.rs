@@ -4,6 +4,7 @@ use async_std::prelude::*;
 use async_std::task;
 use lazy_static::lazy_static;
 use regex::Regex;
+use tracing::{error, info};
 use url::Url;
 
 use crate::error::Error;
@@ -15,7 +16,7 @@ pub async fn get_from_web(message: String) -> Result<String, Error> {
     // Open up a TCP connection and create a URL.
     let listener = TcpListener::bind(("127.0.0.1", 8087)).await?;
     let addr = format!("http://{}", listener.local_addr()?);
-    println!("Please open {} and fill the form", addr);
+    info!("Please open {} and fill the form", addr);
 
     let (sender, receiver): (Sender<String>, Receiver<String>) = unbounded();
 
@@ -33,7 +34,7 @@ pub async fn get_from_web(message: String) -> Result<String, Error> {
                         return;
                     }
                     Err(Error::ServerError(_)) => {}
-                    Err(err) => eprintln!("{}", err),
+                    Err(err) => error!("{}", err),
                 }
             });
         }

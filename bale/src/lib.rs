@@ -3,9 +3,11 @@ tonic::include_proto!("bale.auth.v1");
 tonic::include_proto!("bale.messaging.v2");
 tonic::include_proto!("bale.maviz.v1");
 
+use async_std::channel::Sender;
 use grpc_web_client::{Client, Encoding};
 use serde::Deserialize;
 use std::collections::HashMap;
+use tracing::trace;
 
 const API_KEY: &str = "C28D46DC4C3A7A26564BFCC48B929086A95C93C98E789A19847BEE8627DE4E7D";
 
@@ -94,7 +96,7 @@ impl BaleClient {
         let mut response = match client.get_parameters(request).await {
             Ok(response) => response.into_inner(),
             Err(status) => {
-                println!("{} : {}", status.code(), status.message());
+                trace!("{} : {}", status.code(), status.message());
                 return None;
             }
         };
@@ -141,7 +143,7 @@ impl BaleClient {
             response.auth.clone().unwrap().jwt,
             response.profile.as_ref().unwrap().user_id,
         );
-        eprintln!("{:#?}", &response);
+        trace!("{:#?}", &response);
 
         Some(UserData {
             app_id: 4,
@@ -183,10 +185,10 @@ impl BaleClient {
             }
         };
 
-        eprintln!("{:#?}", response)
+        trace!("{:#?}", response)
     }
 
-    pub async fn subscribe_to_updates(&self) {
+    pub async fn subscribe_to_updates(&self, tx: Sender<(u32, String)>) {
         let mut client = maviz_stream_client::MavizStreamClient::new(self.client.clone());
 
         let jwt = if let LoginStatus::LoggedIn(jwt, _user_id) = &self.login_status {
@@ -208,8 +210,26 @@ impl BaleClient {
             }
         };
 
-        while let message = response.message().await {
-            eprintln!("{:#?}", message)
+        while let Some(message) = response.message().await.unwrap() {
+            trace!("Received: {:?}", message);
+
+            let mut msg: Option<(u32, String)> = None;
+            if let Some(request) = message.request {
+                if let Some(receive_message) = request.receive_message {
+                    let sender_id = receive_message.sender_id;
+                    if let Some(message) = receive_message.message {
+                        if let Some(text_message) = message.text_message {
+                            msg = Some((sender_id, text_message.text));
+                        }
+                    }
+                }
+            }
+
+            // if let Some(msg_with_user) = msg {
+            //     if let Some(err) = tx.send(msg_with_user).await.err() {
+            //         error!("{}", err);
+            //     }
+            // }
         }
     }
 }
