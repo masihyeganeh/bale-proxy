@@ -4,10 +4,11 @@ tonic::include_proto!("bale.messaging.v2");
 tonic::include_proto!("bale.maviz.v1");
 
 use async_std::channel::Sender;
-use grpc_web_client::{Client, Encoding};
 use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::trace;
+
+use grpc_web_client::{Client, Encoding};
 
 const API_KEY: &str = "C28D46DC4C3A7A26564BFCC48B929086A95C93C98E789A19847BEE8627DE4E7D";
 

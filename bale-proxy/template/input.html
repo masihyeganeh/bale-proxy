@@ -3,13 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <title>Bale Proxy</title>
+    <style>
+        body {
+            background-color: #ececec;
+            text-align: center;
+            margin: 0;
+        }
+        #container {
+            margin-top: 20%;
+        }
+        form {
+            width: 40%;
+            margin: 0 auto;
+            background-color: #d2d2d2;
+            padding: 20px 30px 40px 30px;
+            border-radius: 15px;
+        }
+        #message {
+            margin-top: 30px;
+        }
+    </style>
 </head>
 <body>
-    {{title}}
-    <form method="get" action="/">
-        <input name="input">
-        <input type="submit">
-    </form>
-    {{message}}
+    <section id="container">
+        <form method="get" action="/">
+            <h2>{{title}}</h2>
+            <input name="input">
+            <input type="submit">
+            <div id="message">{{message}}</div>
+        </form>
+    </section>
 </body>
 </html>

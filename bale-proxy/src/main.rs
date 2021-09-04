@@ -1,17 +1,17 @@
+use async_std::channel::{Receiver, Sender};
 use async_std::net::SocketAddrV4;
-use bale::{BaleClient, LoginStatus};
 use std::env;
 use std::io::{stdin, stdout, Write};
-mod socket;
-use socket::Socket;
+use std::str::FromStr;
 use tracing::{debug, info, subscriber};
 use tracing_subscriber::FmtSubscriber;
 
 mod error;
 mod simple_server;
-use async_std::channel::{Receiver, Sender};
+mod socket;
+use bale::{BaleClient, LoginStatus};
 use simple_server::get_from_web;
-use std::str::FromStr;
+use socket::Socket;
 
 struct BaleProxy {
     client: BaleClient,

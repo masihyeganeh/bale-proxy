@@ -2,19 +2,16 @@
 
 // This file is based on https://github.com/alce/tonic/blob/86bbb1d5a4844882dec81bef7c1a554bd9464adf/tonic-web/tonic-web/src/call.rs
 
+use byteorder::{BigEndian, ByteOrder};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use futures::{ready, Stream};
+use http::header::{self, HeaderName};
+use http::{HeaderMap, HeaderValue};
+use http_body::{Body, SizeHint};
 use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::{convert::TryInto, error::Error};
-
-use byteorder::{BigEndian, ByteOrder};
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use futures::{ready, Stream};
-use http::{
-    header::{self, HeaderName},
-    HeaderMap, HeaderValue,
-};
-use http_body::{Body, SizeHint};
 use tonic::Status;
 
 use self::content_types::*;

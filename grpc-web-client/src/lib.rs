@@ -1,17 +1,16 @@
 mod call;
 
-use crate::call::Encoding::Base64;
 use bytes::Bytes;
-pub use call::Encoding;
-use call::GrpcWebCall;
-use core::fmt;
-use core::task::{Context, Poll};
+use core::{fmt, task::Context, task::Poll};
 use futures::{Future, Stream};
 use http::{request::Request, response::Response, HeaderMap, HeaderValue};
 use http_body::Body;
 use std::{error::Error, pin::Pin};
 use tonic::{body::BoxBody, client::GrpcService};
 use tracing::trace;
+
+pub use call::Encoding;
+use call::GrpcWebCall;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientError {
@@ -67,7 +66,7 @@ impl Client {
         req = req.header("content-type", self.encoding.to_content_type());
 
         let mut body = hyper::body::to_bytes(rpc.into_body()).await.unwrap();
-        if self.encoding == Base64 {
+        if self.encoding == Encoding::Base64 {
             body = Bytes::from(base64::encode(body))
         }
 

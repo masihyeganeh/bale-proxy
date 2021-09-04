@@ -1,9 +1,9 @@
 use async_std::net::{TcpListener, TcpStream};
-use async_std::prelude::*;
 use async_std::sync::{Arc, Mutex};
 use async_std::task;
 use futures::stream::StreamExt;
 use futures::Future;
+use futures::{AsyncReadExt, AsyncWriteExt};
 use std::fmt::Write;
 use std::net::SocketAddrV4;
 use tracing::{debug, info};
@@ -97,7 +97,8 @@ async fn handle_connection<R>(
                 remote.local_addr().unwrap(),
                 hex_bytes,
             );
-            let response = callback.lock().await((&buffer[..size]).to_vec()).await;
+            let cb = callback.lock().await;
+            let response = cb((&buffer[..size]).to_vec()).await;
             local.write(response.as_slice()).await.unwrap();
         }
         local.flush().await.unwrap();
