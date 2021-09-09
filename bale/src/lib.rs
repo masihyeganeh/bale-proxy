@@ -6,7 +6,7 @@ tonic::include_proto!("bale.maviz.v1");
 use async_std::channel::Sender;
 use serde::Deserialize;
 use std::collections::HashMap;
-use tracing::trace;
+use tracing::{error, trace};
 
 use grpc_web_client::{Client, Encoding};
 
@@ -226,11 +226,11 @@ impl BaleClient {
                 }
             }
 
-            // if let Some(msg_with_user) = msg {
-            //     if let Some(err) = tx.send(msg_with_user).await.err() {
-            //         error!("{}", err);
-            //     }
-            // }
+            if let Some(msg_with_user) = msg {
+                if let Some(err) = tx.send(msg_with_user).await.err() {
+                    error!("{}", err);
+                }
+            }
         }
     }
 }

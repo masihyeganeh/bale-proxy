@@ -1,5 +1,5 @@
-use async_std::channel::{Receiver, Sender};
 use async_std::net::SocketAddrV4;
+use futures::{select, FutureExt};
 use std::env;
 use std::io::{stdin, stdout, Write};
 use std::str::FromStr;
@@ -9,6 +9,7 @@ use tracing_subscriber::FmtSubscriber;
 mod error;
 mod simple_server;
 mod socket;
+use async_std::sync::Arc;
 use bale::{BaleClient, LoginStatus};
 use simple_server::get_from_web;
 use socket::Socket;
@@ -16,8 +17,6 @@ use socket::Socket;
 struct BaleProxy {
     client: BaleClient,
     run_params: RunParams,
-    tx: Sender<(u32, String)>,
-    rx: Receiver<(u32, String)>,
 }
 
 impl BaleProxy {
@@ -59,23 +58,17 @@ impl BaleProxy {
             _ => panic!("unknown error happened"),
         };
 
-        let (tx, rx) = async_std::channel::unbounded::<(u32, String)>();
-
         if let OperationMode::Client(server_user_id) = run_params.mode {
             // TODO: Handshake
-            bale.send_message(server_user_id, "Handshaking".to_string())
-                .await;
+            // bale.send_message(server_user_id, "Handshaking".to_string())
+            //     .await;
         } else {
             info!("Set {} as server id in clients", user_id);
         }
 
-        bale.send_message(932014429, "Hi".to_string()).await;
-
         BaleProxy {
             client: bale,
             run_params: run_params_clone,
-            tx,
-            rx,
         }
     }
 
@@ -86,8 +79,14 @@ impl BaleProxy {
         }
         let run_params = self.run_params.clone();
 
+        let (client_tx, client_rx) = async_std::channel::unbounded::<(u32, String)>();
+        let (socket_tx, socket_rx) = async_std::channel::unbounded::<(u32, Vec<u8>)>();
+
+        let client = Arc::new(self.client);
+
+        let client1 = client.clone();
         let client_handle = tokio::spawn(async move {
-            self.client.subscribe_to_updates(self.tx.clone()).await;
+            client1.subscribe_to_updates(client_tx).await;
         });
 
         let socket_handle = tokio::spawn(async move {
@@ -107,9 +106,40 @@ impl BaleProxy {
                 .unwrap();
         });
 
-        let (client_res, socket_res) = tokio::join!(client_handle, socket_handle);
+        let client2 = client.clone();
+
+        let handler_handle = tokio::spawn(async move {
+            loop {
+                select! {
+                    res = socket_rx.recv().fuse() => {
+                        if let Ok((id, msg)) = res {
+                            info!("received {:?} msg from socket", msg);
+                            client2.send_message(id, base64::encode(msg)).await;
+                        } else {
+                            todo!();
+                        }
+                    },
+                    res = client_rx.recv().fuse() => {
+                        if let Ok((id, msg)) = res {
+                            info!("received {:?} msg from client", msg);
+                            if let Ok(msg) = base64::decode(msg) {
+                                socket_tx.send((id, msg)).await.unwrap();
+                            } else {
+                                todo!();
+                            }
+                        } else {
+                            todo!();
+                        }
+                    },
+                }
+            }
+        });
+
+        let (client_res, socket_res, handler_res) =
+            tokio::join!(client_handle, socket_handle, handler_handle);
         client_res.unwrap();
         socket_res.unwrap();
+        handler_res.unwrap();
     }
 }
 
