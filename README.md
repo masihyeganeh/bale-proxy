@@ -43,7 +43,7 @@ and for client it can be:
 ```
 
 ## And how does it look in the messenger?
-Just a bunch of base64 encoded texts
+![Just a bunch of base64 encoded texts](github/screenshot.png)  
 
 ## TODOs
 
