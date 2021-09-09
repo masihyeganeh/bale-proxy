@@ -1,15 +1,17 @@
 use async_std::net::SocketAddrV4;
-use futures::{select, FutureExt};
+use async_std::sync::{Arc, Mutex};
 use std::env;
 use std::io::{stdin, stdout, Write};
 use std::str::FromStr;
-use tracing::{debug, info, subscriber};
+use tokio::select;
+use tracing::{debug, error, info, subscriber};
 use tracing_subscriber::FmtSubscriber;
 
 mod error;
 mod simple_server;
 mod socket;
-use async_std::sync::Arc;
+mod utils;
+use crate::utils::dump_hex;
 use bale::{BaleClient, LoginStatus};
 use simple_server::get_from_web;
 use socket::Socket;
@@ -58,7 +60,7 @@ impl BaleProxy {
             _ => panic!("unknown error happened"),
         };
 
-        if let OperationMode::Client(server_user_id) = run_params.mode {
+        if let OperationMode::Client(_server_user_id) = run_params.mode {
             // TODO: Handshake
             // bale.send_message(server_user_id, "Handshaking".to_string())
             //     .await;
@@ -73,14 +75,21 @@ impl BaleProxy {
     }
 
     async fn run(self) {
-        async fn proxy_messages(input_bytes: Vec<u8>) -> Vec<u8> {
-            // trace!("{:?}", input_bytes);
-            input_bytes
-        }
         let run_params = self.run_params.clone();
 
+        let recipient = Arc::new(Mutex::new(
+            if let OperationMode::Client(id) = run_params.mode {
+                Some(id)
+            } else {
+                None
+            },
+        ));
+
         let (client_tx, client_rx) = async_std::channel::unbounded::<(u32, String)>();
-        let (socket_tx, socket_rx) = async_std::channel::unbounded::<(u32, Vec<u8>)>();
+        let (inbound_socket_tx, inbound_socket_rx) =
+            async_std::channel::unbounded::<(u32, Vec<u8>)>();
+        let (outbound_socket_tx, outbound_socket_rx) =
+            async_std::channel::unbounded::<(u32, Vec<u8>)>();
 
         let client = Arc::new(self.client);
 
@@ -90,7 +99,7 @@ impl BaleProxy {
         });
 
         let socket_handle = tokio::spawn(async move {
-            Socket::new(proxy_messages)
+            Socket::new(inbound_socket_tx, outbound_socket_rx)
                 .connect(
                     run_params.mode,
                     SocketAddrV4::new(
@@ -111,24 +120,45 @@ impl BaleProxy {
         let handler_handle = tokio::spawn(async move {
             loop {
                 select! {
-                    res = socket_rx.recv().fuse() => {
-                        if let Ok((id, msg)) = res {
-                            info!("received {:?} msg from socket", msg);
-                            client2.send_message(id, base64::encode(msg)).await;
-                        } else {
-                            todo!();
+                    res = inbound_socket_rx.recv() => {
+                        match res {
+                            Ok((_, msg)) => {
+                                info!("received msg from socket : {}", dump_hex(msg.as_ref()));
+                                if let Some(id) = *recipient.lock_arc().await {
+                                    client2.send_message(id, base64::encode(msg)).await;
+                                } else {
+                                    error!("sending message to client but recipient in unknown");
+                                }
+                            },
+                            Err(err) => {
+                                error!("error receiving message from socket : {}", err);
+                                break;
+                            },
                         }
                     },
-                    res = client_rx.recv().fuse() => {
-                        if let Ok((id, msg)) = res {
-                            info!("received {:?} msg from client", msg);
-                            if let Ok(msg) = base64::decode(msg) {
-                                socket_tx.send((id, msg)).await.unwrap();
-                            } else {
-                                todo!();
-                            }
-                        } else {
-                            todo!();
+                    res = client_rx.recv() => {
+                        match res {
+                            Ok((id, msg)) => {
+                                info!("received msg from client : {}", dump_hex(msg.as_ref()));
+                                match base64::decode(msg) {
+                                    Ok(msg) => {
+                                        {
+                                            let mut recipient_id = recipient.lock_arc().await;
+                                            if recipient_id.is_none() {
+                                                *recipient_id = Some(id);
+                                            }
+                                        }
+                                        if let Err(err) = outbound_socket_tx.send((id, msg)).await {
+                                            error!("could not send message message to socket : {:?}", err);
+                                        }
+                                    },
+                                    Err(err) => error!("could not decode received message from client : {:?}", err),
+                                }
+                            },
+                            Err(err) => {
+                                error!("error receiving message from client : {:?}", err);
+                                break;
+                            },
                         }
                     },
                 }

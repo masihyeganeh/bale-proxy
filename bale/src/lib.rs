@@ -6,7 +6,7 @@ tonic::include_proto!("bale.maviz.v1");
 use async_std::channel::Sender;
 use serde::Deserialize;
 use std::collections::HashMap;
-use tracing::{error, trace};
+use tracing::{debug, error, trace};
 
 use grpc_web_client::{Client, Encoding};
 
@@ -157,6 +157,8 @@ impl BaleClient {
 
     pub async fn send_message(&self, user_id: u32, message: String) {
         let mut client = messaging_client::MessagingClient::new(self.client.clone());
+
+        debug!("Sending message to user #{} : {}", user_id, &message);
 
         let jwt = if let LoginStatus::LoggedIn(jwt, _user_id) = &self.login_status {
             jwt

@@ -1,26 +1,31 @@
+use async_std::channel::{Receiver, Sender};
 use async_std::net::{TcpListener, TcpStream};
-use async_std::sync::{Arc, Mutex};
+use async_std::sync::Arc;
 use async_std::task;
 use futures::stream::StreamExt;
-use futures::Future;
 use futures::{AsyncReadExt, AsyncWriteExt};
-use std::fmt::Write;
 use std::net::SocketAddrV4;
-use tracing::{debug, info};
+use tokio::select;
+use tracing::{debug, error, info};
 
 use crate::error::Error;
+use crate::utils::dump_hex;
 use crate::OperationMode;
 
-pub(crate) struct Socket<R>(Arc<Mutex<fn(Vec<u8>) -> R>>)
-where
-    R: Future<Output = Vec<u8>> + Send + Sync + 'static;
+pub(crate) struct Socket {
+    inbound_tx: Arc<Sender<(u32, Vec<u8>)>>,
+    outbound_rx: Arc<Receiver<(u32, Vec<u8>)>>,
+}
 
-impl<R: futures::Future<Output = Vec<u8>> + Send + Sync + 'static> Socket<R> {
-    pub(crate) fn new(f: fn(Vec<u8>) -> R) -> Socket<R>
-    where
-        R: Future<Output = Vec<u8>>,
-    {
-        Socket(Arc::new(Mutex::new(f)))
+impl Socket {
+    pub(crate) fn new(
+        inbound_tx: Sender<(u32, Vec<u8>)>,
+        outbound_rx: Receiver<(u32, Vec<u8>)>,
+    ) -> Socket {
+        Socket {
+            inbound_tx: Arc::new(inbound_tx),
+            outbound_rx: Arc::new(outbound_rx),
+        }
     }
 
     pub(crate) async fn connect(
@@ -29,14 +34,21 @@ impl<R: futures::Future<Output = Vec<u8>> + Send + Sync + 'static> Socket<R> {
         local_addrs: SocketAddrV4,
         remote_addrs: SocketAddrV4,
     ) -> Result<(), Error> {
+        let inbound_tx = self.inbound_tx;
+        let outbound_rx = self.outbound_rx;
         match mode {
-            OperationMode::Server => self.bind_server(local_addrs, remote_addrs).await,
-            OperationMode::Client(_) => self.bind_local(local_addrs, remote_addrs).await,
+            OperationMode::Server => {
+                Self::bind_server(inbound_tx, outbound_rx, local_addrs, remote_addrs).await
+            }
+            OperationMode::Client(_) => {
+                Self::bind_local(inbound_tx, outbound_rx, local_addrs, remote_addrs).await
+            }
         }
     }
 
     async fn bind_server(
-        &self,
+        inbound_tx: Arc<Sender<(u32, Vec<u8>)>>,
+        outbound_rx: Arc<Receiver<(u32, Vec<u8>)>>,
         local_addrs: SocketAddrV4,
         remote_addrs: SocketAddrV4,
     ) -> Result<(), Error> {
@@ -44,13 +56,13 @@ impl<R: futures::Future<Output = Vec<u8>> + Send + Sync + 'static> Socket<R> {
         let local = TcpStream::connect(local_addrs).await?;
         info!("connecting to remote : {}", remote_addrs);
         let remote = TcpStream::connect(remote_addrs).await?;
-        let callback = self.0.clone();
-        handle_connection(callback, local, remote).await;
+        handle_connection(inbound_tx.clone(), outbound_rx.clone(), local, remote).await;
         Ok(())
     }
 
     async fn bind_local(
-        &self,
+        inbound_tx: Arc<Sender<(u32, Vec<u8>)>>,
+        outbound_rx: Arc<Receiver<(u32, Vec<u8>)>>,
         local_addrs: SocketAddrV4,
         remote_addrs: SocketAddrV4,
     ) -> Result<(), Error> {
@@ -58,49 +70,61 @@ impl<R: futures::Future<Output = Vec<u8>> + Send + Sync + 'static> Socket<R> {
         let listener = TcpListener::bind(local_addrs).await?;
         info!("listening on local : {}", listener.local_addr()?);
 
-        Ok(listener
+        listener
             .incoming()
-            .for_each_concurrent(/* limit */ None, |stream| async move {
+            .for_each_concurrent(/* limit */ None, |stream| async {
                 let stream = stream.unwrap();
-                let callback = self.0.clone();
+
+                let (i_tx, o_rx) = (inbound_tx.clone(), outbound_rx.clone());
 
                 task::spawn(async move {
                     info!("connecting to remote : {}", remote_addrs);
                     let remote = TcpStream::connect(remote_addrs).await.unwrap();
-                    handle_connection(callback, remote, stream).await;
+                    handle_connection(i_tx, o_rx, remote, stream).await;
                 });
             })
-            .await)
+            .await;
+        Ok(())
     }
 }
 
-async fn handle_connection<R>(
-    callback: Arc<Mutex<impl Fn(Vec<u8>) -> R>>,
+async fn handle_connection(
+    inbound_tx: Arc<Sender<(u32, Vec<u8>)>>,
+    outbound_rx: Arc<Receiver<(u32, Vec<u8>)>>,
     mut local: TcpStream,
     mut remote: TcpStream,
-) where
-    R: Future<Output = Vec<u8>> + Send + Sync,
-{
+) {
     let mut buffer = [0; 1024];
-    while let Ok(size) = remote.read(&mut buffer).await {
-        if size > 0 {
-            let mut hex_bytes = String::with_capacity(2 * size);
-            for (i, &byte) in buffer[..size].iter().enumerate() {
-                if i % 16 == 0 {
-                    std::write!(hex_bytes, "\n").expect("Dumping hex data failed");
+    loop {
+        select! {
+            res = remote.read(&mut buffer) => {
+                match res {
+                    Ok(size) => {
+                        if size > 0 {
+                            debug!(
+                                "{} -> {} :{}",
+                                local.local_addr().unwrap(),
+                                remote.local_addr().unwrap(),
+                                dump_hex(&buffer[..size]),
+                            );
+
+                            if let Err(err) = inbound_tx.send((0, (&buffer[..size]).to_vec())).await {
+                                error!("could not send buffer to inbound_tx : {:?}", err);
+                            }
+                        }
+                    },
+                    Err(err) => error!("error reading from remote socket : {:?}", err),
                 }
-                std::write!(hex_bytes, "{:02X} ", byte).expect("Dumping hex data failed");
             }
-            debug!(
-                "{} -> {} :{}",
-                local.local_addr().unwrap(),
-                remote.local_addr().unwrap(),
-                hex_bytes,
-            );
-            let cb = callback.lock().await;
-            let response = cb((&buffer[..size]).to_vec()).await;
-            local.write(response.as_slice()).await.unwrap();
+            res = outbound_rx.recv() => {
+                match res {
+                    Ok((_, response)) => {
+                        local.write(response.as_slice()).await.unwrap();
+                        local.flush().await.unwrap();
+                    },
+                    Err(err) => error!("error reading from outbound socket : {:?}", err),
+                }
+            }
         }
-        local.flush().await.unwrap();
     }
 }
